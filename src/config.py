@@ -43,18 +43,26 @@ class FacialLandmarks:
     RIGHT_EYE_INNER = 263
     LEFT_EYE_CENTER = 468  # Iris center (if using refine_landmarks)
     RIGHT_EYE_CENTER = 473  # Iris center (if using refine_landmarks)
+    LEFT_EYE_TOP = 159
+    LEFT_EYE_BOTTOM = 145
+    RIGHT_EYE_TOP = 386
+    RIGHT_EYE_BOTTOM = 374
 
     # Nose
     NOSE_TIP = 1
     NOSE_BRIDGE = 6
     NOSE_BOTTOM = 2
 
-    # Mouth
+    # Mouth - Extended landmarks for gesture detection
     UPPER_LIP_TOP = 13
     UPPER_LIP_BOTTOM = 14
     LOWER_LIP_TOP = 312
+    LOWER_LIP_BOTTOM = 17  # Bottom of lower lip
     MOUTH_LEFT = 61
     MOUTH_RIGHT = 291
+    # Additional mouth landmarks for better MAR calculation
+    UPPER_LIP_CENTER = 0  # Center of upper lip
+    LOWER_LIP_CENTER = 17  # Center of lower lip
 
     # Chin
     CHIN_BOTTOM = 152
@@ -73,6 +81,94 @@ class FacialLandmarks:
     # Jawline
     JAW_LEFT = 58
     JAW_RIGHT = 288
+
+    # Eyebrows - for brow raise detection
+    LEFT_EYEBROW_INNER = 107
+    LEFT_EYEBROW_CENTER = 66
+    LEFT_EYEBROW_OUTER = 105
+    RIGHT_EYEBROW_INNER = 336
+    RIGHT_EYEBROW_CENTER = 296
+    RIGHT_EYEBROW_OUTER = 334
+
+    # Additional landmarks for precise gesture detection
+    LEFT_EYEBROW_TOP = 70   # Top of left eyebrow arch
+    RIGHT_EYEBROW_TOP = 300  # Top of right eyebrow arch
+
+
+# ============================================================================
+# GESTURE DETECTION CONFIGURATION
+# ============================================================================
+
+@dataclass
+class GestureConfig:
+    """Configuration for a specific gesture."""
+    threshold: float
+    cooldown_frames: int  # Frames to wait after triggering
+    required_frames: int  # Consecutive frames needed to trigger
+    name: str
+
+
+# Gesture thresholds and settings
+# Mouth Aspect Ratio (MAR) = vertical_distance / horizontal_distance
+# When mouth is open, MAR increases
+MOUTH_OPEN_THRESHOLD = 0.35  # Ratio threshold for mouth open detection
+MOUTH_OPEN_COOLDOWN_FRAMES = 30  # ~1 second at 30fps
+MOUTH_OPEN_REQUIRED_FRAMES = 5  # Hold for 5 frames to trigger
+
+# Brow Raise Ratio = (brow_to_eye_distance) / (face_height)
+# When brows are raised, this ratio increases
+BROW_RAISE_THRESHOLD = 0.085  # Ratio threshold for brow raise
+BROW_RAISE_COOLDOWN_FRAMES = 30  # ~1 second at 30fps
+BROW_RAISE_REQUIRED_FRAMES = 5  # Hold for 5 frames to trigger
+
+# Eye Aspect Ratio (EAR) for potential eye blink detection (future)
+EYE_BLINK_THRESHOLD = 0.2
+EYE_BLINK_COOLDOWN_FRAMES = 15
+EYE_BLINK_REQUIRED_FRAMES = 3
+
+# Gesture configurations dictionary
+GESTURE_CONFIGS: Dict[str, GestureConfig] = {
+    "mouth_open": GestureConfig(
+        threshold=MOUTH_OPEN_THRESHOLD,
+        cooldown_frames=MOUTH_OPEN_COOLDOWN_FRAMES,
+        required_frames=MOUTH_OPEN_REQUIRED_FRAMES,
+        name="Mouth Open"
+    ),
+    "brow_raise": GestureConfig(
+        threshold=BROW_RAISE_THRESHOLD,
+        cooldown_frames=BROW_RAISE_COOLDOWN_FRAMES,
+        required_frames=BROW_RAISE_REQUIRED_FRAMES,
+        name="Brow Raise"
+    ),
+}
+
+# Landmark indices for gesture calculations
+class GestureLandmarks:
+    """Landmark indices specifically for gesture detection."""
+
+    # Mouth landmarks for MAR calculation (vertical opening)
+    MOUTH_VERTICAL = {
+        "upper": [13, 312],  # Upper lip landmarks
+        "lower": [14, 17],   # Lower lip landmarks
+    }
+
+    # Mouth corners for horizontal reference
+    MOUTH_HORIZONTAL = {
+        "left": 61,
+        "right": 291,
+    }
+
+    # Eyebrow landmarks (for averaging)
+    LEFT_EYEBROW = [107, 66, 105, 70]
+    RIGHT_EYEBROW = [336, 296, 334, 300]
+
+    # Eye landmarks for reference distance
+    LEFT_EYE_TOP = 159
+    RIGHT_EYE_TOP = 386
+
+    # Face height reference points
+    FACE_TOP = 10  # Forehead
+    FACE_BOTTOM = 152  # Chin
 
 
 @dataclass
@@ -249,6 +345,7 @@ WINDOW_NAME = "AR Face Filter"
 FPS_DISPLAY = True
 SHOW_LANDMARKS = False  # Debug mode: show facial landmarks
 SHOW_INSTRUCTIONS = True  # Show keyboard instructions
+SHOW_GESTURE_STATUS = True  # Show gesture detection status
 
 # Default active filters (all enabled by default)
 DEFAULT_ACTIVE_FILTERS = {
@@ -260,3 +357,6 @@ DEFAULT_ACTIVE_FILTERS = {
 
 # Default active texture mask (None by default)
 DEFAULT_ACTIVE_TEXTURE_MASK = None  # Can be "masculine", "feminine", or "debug"
+
+# Gesture control settings
+GESTURE_CONTROL_ENABLED = True  # Master toggle for gesture controls

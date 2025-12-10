@@ -1,17 +1,18 @@
 """
 Main AR Filter application logic.
-Orchestrates camera, face detection, and filter rendering.
+Orchestrates camera, face detection, gesture detection, and filter rendering.
 """
 
 import cv2
 import numpy as np
 import time
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from .camera import Camera
 from .face_detector import FaceDetector, FaceLandmarks
 from .graphics import GraphicsEngine
 from .mesh_renderer import MeshRenderer
+from .gesture_detector import GestureDetector, GestureType, GestureEvent
 from . import config
 
 
@@ -87,6 +88,10 @@ class FilterApplication:
         self.camera = Camera()
         self.face_detector = FaceDetector()
         self.graphics = GraphicsEngine()
+        self.gesture_detector = GestureDetector(
+            enabled=config.GESTURE_CONTROL_ENABLED
+        )
+        
         self.filters: Dict[str, ARFilter] = {}
         self.texture_masks: Dict[str, TextureMask] = {}
         self.active_filters: Dict[str, bool] = {}
@@ -98,12 +103,25 @@ class FilterApplication:
         self.start_time = time.time()
         self.fps = 0.0
 
+        # Gesture event display
+        self._gesture_display_messages: List[Dict] = []
+        self._message_duration = 1.5  # seconds
+
+        # Filter/mask lists for cycling
+        self._filter_names: List[str] = []
+        self._mask_names: List[str] = []
+        self._current_filter_index = -1  # -1 means no filter active
+
         # Load all filters
         self._load_filters()
         self._load_texture_masks()
+        
         # Initialize active filters state
         self.active_filters = config.DEFAULT_ACTIVE_FILTERS.copy()
         self.active_texture_mask = config.DEFAULT_ACTIVE_TEXTURE_MASK
+
+        # Setup gesture callbacks
+        self._setup_gesture_callbacks()
 
     def _load_filters(self) -> None:
         """Load all AR filters from configuration."""
@@ -111,6 +129,7 @@ class FilterApplication:
             flt = ARFilter(cfg)
             if flt.is_loaded():
                 self.filters[name] = flt
+                self._filter_names.append(name)
                 print(f"Loaded filter: {name}")
             else:
                 print(f"Skipped filter: {name}")
@@ -121,8 +140,84 @@ class FilterApplication:
             mask = TextureMask(cfg)
             if mask.is_loaded():
                 self.texture_masks[name] = mask
+                self._mask_names.append(name)
             else:
                 print(f"Skipped texture mask: {name}")
+
+    def _setup_gesture_callbacks(self) -> None:
+        """Register callbacks for gesture events."""
+        # Mouth open -> Cycle texture masks
+        self.gesture_detector.register_callback(
+            GestureType.MOUTH_OPEN,
+            self._on_mouth_open
+        )
+        
+        # Brow raise -> Toggle glasses filter
+        self.gesture_detector.register_callback(
+            GestureType.BROW_RAISE,
+            self._on_brow_raise
+        )
+
+    def _on_mouth_open(self, event: GestureEvent) -> None:
+        """
+        Handle mouth open gesture.
+        Cycles through texture masks (3D face paint).
+        """
+        # Cycle through texture masks
+        if not self._mask_names:
+            return
+
+        if self.active_texture_mask is None:
+            # Activate first mask
+            self.active_texture_mask = self._mask_names[0]
+        else:
+            # Find current index and cycle to next
+            try:
+                current_idx = self._mask_names.index(self.active_texture_mask)
+                next_idx = (current_idx + 1) % (len(self._mask_names) + 1)
+                
+                if next_idx >= len(self._mask_names):
+                    self.active_texture_mask = None  # Cycle back to none
+                else:
+                    self.active_texture_mask = self._mask_names[next_idx]
+            except ValueError:
+                self.active_texture_mask = self._mask_names[0]
+
+        # Add display message
+        mask_name = self.active_texture_mask or "None"
+        self._add_gesture_message(
+            f"MOUTH OPEN → Texture: {mask_name.upper()}",
+            (0, 255, 255)  # Yellow
+        )
+
+    def _on_brow_raise(self, event: GestureEvent) -> None:
+        """
+        Handle brow raise gesture.
+        Toggles the glasses filter on/off.
+        """
+        if "glasses" in self.active_filters:
+            self.active_filters["glasses"] = not self.active_filters["glasses"]
+            status = "ON" if self.active_filters["glasses"] else "OFF"
+            self._add_gesture_message(
+                f"BROWS RAISED → Glasses: {status}",
+                (0, 255, 0)  # Green
+            )
+
+    def _add_gesture_message(self, message: str, color: tuple) -> None:
+        """Add a message to display on screen."""
+        self._gesture_display_messages.append({
+            "text": message,
+            "color": color,
+            "timestamp": time.time()
+        })
+
+    def _clean_old_messages(self) -> None:
+        """Remove expired gesture messages."""
+        current_time = time.time()
+        self._gesture_display_messages = [
+            msg for msg in self._gesture_display_messages
+            if current_time - msg["timestamp"] < self._message_duration
+        ]
 
     def _apply_filter(self, frame: np.ndarray, face: FaceLandmarks,
                      flt: ARFilter) -> np.ndarray:
@@ -132,24 +227,31 @@ class FilterApplication:
 
         # Get rotation and scale points
         get = lambda i: self.face_detector.get_landmark_point(face, i)
-        rot_p1, rot_p2 = get(flt.config.rotation_landmarks[0]), get(flt.config.rotation_landmarks[1])
+        rot_p1 = get(flt.config.rotation_landmarks[0])
+        rot_p2 = get(flt.config.rotation_landmarks[1])
         if not (rot_p1 and rot_p2):
             return frame
 
-        scale_p1, scale_p2 = get(flt.config.scale_landmarks[0]), get(flt.config.scale_landmarks[1])
+        scale_p1 = get(flt.config.scale_landmarks[0])
+        scale_p2 = get(flt.config.scale_landmarks[1])
         if not (scale_p1 and scale_p2):
             return frame
 
         # Calculate transformations
         angle = self.graphics.calculate_angle(rot_p1, rot_p2)
-        width = int(self.graphics.calculate_distance(scale_p1, scale_p2) * flt.config.scale_multiplier)
+        width = int(
+            self.graphics.calculate_distance(scale_p1, scale_p2) 
+            * flt.config.scale_multiplier
+        )
         if width <= 0:
             return frame
 
         # Apply transformations
         resized = self.graphics.resize_image(flt.image, width)
         rotated = self.graphics.rotate_image(resized, angle)
-        anchor = self.face_detector.get_landmarks_center(face, flt.config.anchor_landmarks)
+        anchor = self.face_detector.get_landmarks_center(
+            face, flt.config.anchor_landmarks
+        )
         pos = (anchor[0] + flt.config.x_offset, anchor[1] + flt.config.y_offset)
 
         return self.graphics.overlay_image(frame, rotated, pos)
@@ -167,9 +269,8 @@ class FilterApplication:
         # Get landmarks as numpy array
         face_landmarks_array = self.face_detector.get_landmarks_as_array(face)
 
-        # Special case: debug wireframe mode (no texture warping needed)
+        # Special case: debug wireframe mode
         if mask.config.debug_wireframe and self.active_texture_mask == "debug":
-            # Just draw wireframe directly without texture warping
             return self._draw_wireframe(frame, face_landmarks_array)
 
         # Render the texture mask
@@ -180,8 +281,7 @@ class FilterApplication:
                 opacity=mask.config.opacity
             )
         except Exception:
-            # Silently handle rendering errors (can happen with extreme poses)
-            pass
+            pass  # Silently handle rendering errors
 
         return frame
 
@@ -190,20 +290,9 @@ class FilterApplication:
         frame: np.ndarray,
         landmarks: np.ndarray
     ) -> np.ndarray:
-        """
-        Draw wireframe overlay for debugging.
-
-        Args:
-            frame: Frame to draw on
-            landmarks: Face landmarks (Nx2 array)
-
-        Returns:
-            Frame with wireframe overlay
-        """
-        # Get triangles from config
+        """Draw wireframe overlay for debugging."""
         triangles = config.FACE_MESH_TRIANGLES
 
-        # Draw each triangle edge
         for tri_indices in triangles:
             pt1 = tuple(landmarks[tri_indices[0]].astype(int))
             pt2 = tuple(landmarks[tri_indices[1]].astype(int))
@@ -232,6 +321,119 @@ class FilterApplication:
         """Draw FPS counter."""
         cv2.putText(frame, f"FPS: {self.fps:.1f}", (10, 30),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        return frame
+
+    def _draw_gesture_status(self, frame: np.ndarray) -> np.ndarray:
+        """Draw gesture detection status and debug info."""
+        if not config.SHOW_GESTURE_STATUS:
+            return frame
+
+        h, w = frame.shape[:2]
+        debug_info = self.gesture_detector.get_debug_info()
+        
+        # Position on right side of screen
+        x_pos = w - 280
+        y_start = 60
+        line_height = 22
+
+        # Header
+        cv2.putText(
+            frame, "=== Gesture Detection ===",
+            (x_pos, y_start), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1
+        )
+        y = y_start + line_height
+
+        # Mouth Open status
+        mouth = debug_info["mouth_open"]
+        mouth_color = (0, 255, 0) if mouth["is_active"] else (100, 100, 100)
+        progress = min(1.0, mouth["frames"] / config.MOUTH_OPEN_REQUIRED_FRAMES)
+        bar_width = int(50 * progress)
+        
+        cv2.putText(
+            frame, f"Mouth: {mouth['ratio']:.3f}/{mouth['threshold']:.2f}",
+            (x_pos, y), cv2.FONT_HERSHEY_SIMPLEX, 0.45, mouth_color, 1
+        )
+        # Progress bar
+        cv2.rectangle(frame, (x_pos + 170, y - 10), (x_pos + 220, y), (50, 50, 50), -1)
+        if bar_width > 0:
+            cv2.rectangle(
+                frame, (x_pos + 170, y - 10), (x_pos + 170 + bar_width, y),
+                (0, 200, 200), -1
+            )
+        y += line_height
+
+        # Brow Raise status
+        brow = debug_info["brow_raise"]
+        brow_color = (0, 255, 0) if brow["is_active"] else (100, 100, 100)
+        progress = min(1.0, brow["frames"] / config.BROW_RAISE_REQUIRED_FRAMES)
+        bar_width = int(50 * progress)
+        
+        cv2.putText(
+            frame, f"Brows: {brow['ratio']:.3f}/{brow['threshold']:.3f}",
+            (x_pos, y), cv2.FONT_HERSHEY_SIMPLEX, 0.45, brow_color, 1
+        )
+        # Progress bar
+        cv2.rectangle(frame, (x_pos + 170, y - 10), (x_pos + 220, y), (50, 50, 50), -1)
+        if bar_width > 0:
+            cv2.rectangle(
+                frame, (x_pos + 170, y - 10), (x_pos + 170 + bar_width, y),
+                (0, 200, 200), -1
+            )
+        y += line_height
+
+        # Cooldown indicators
+        if mouth["cooldown"] > 0:
+            cv2.putText(
+                frame, f"Mouth cooldown: {mouth['cooldown']}",
+                (x_pos, y), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (100, 100, 255), 1
+            )
+            y += line_height
+        if brow["cooldown"] > 0:
+            cv2.putText(
+                frame, f"Brow cooldown: {brow['cooldown']}",
+                (x_pos, y), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (100, 100, 255), 1
+            )
+            y += line_height
+
+        return frame
+
+    def _draw_gesture_messages(self, frame: np.ndarray) -> np.ndarray:
+        """Draw gesture trigger notification messages."""
+        self._clean_old_messages()
+        
+        if not self._gesture_display_messages:
+            return frame
+
+        h, w = frame.shape[:2]
+        
+        # Draw messages at top center
+        for i, msg in enumerate(self._gesture_display_messages[-3:]):  # Show last 3
+            text = msg["text"]
+            color = msg["color"]
+            
+            # Calculate text size for centering
+            (text_w, text_h), _ = cv2.getTextSize(
+                text, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2
+            )
+            x = (w - text_w) // 2
+            y = 80 + i * 40
+            
+            # Draw background
+            cv2.rectangle(
+                frame, (x - 10, y - 25), (x + text_w + 10, y + 10),
+                (0, 0, 0), -1
+            )
+            cv2.rectangle(
+                frame, (x - 10, y - 25), (x + text_w + 10, y + 10),
+                color, 2
+            )
+            
+            # Draw text
+            cv2.putText(
+                frame, text, (x, y),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2
+            )
+
         return frame
 
     def _draw_instructions(self, frame: np.ndarray) -> np.ndarray:
@@ -266,6 +468,25 @@ class FilterApplication:
                        (10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
             y += h
 
+        # Gesture controls section
+        y += 5
+        cv2.putText(frame, "=== Gesture Controls ===",
+                   (10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+        y += h
+        
+        gesture_status = "ON" if self.gesture_detector.enabled else "OFF"
+        gesture_color = (0, 255, 255) if self.gesture_detector.enabled else (100, 100, 100)
+        cv2.putText(frame, f"[G] Gestures: {gesture_status}",
+                   (10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, gesture_color, 1)
+        y += h
+        
+        cv2.putText(frame, "Open Mouth: Cycle masks",
+                   (10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (180, 180, 180), 1)
+        y += h - 5
+        cv2.putText(frame, "Raise Brows: Toggle glasses",
+                   (10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (180, 180, 180), 1)
+        y += h
+
         # General controls
         y += 5
         cv2.putText(frame, "[A] All 2D ON  [D] All OFF  [N] No Mask  [Q] Quit",
@@ -293,17 +514,25 @@ class FilterApplication:
 
         # Texture Mask controls
         elif key in (ord('m'), ord('M')):
-            # Toggle masculine mask
-            self.active_texture_mask = "masculine" if self.active_texture_mask != "masculine" else None
+            self.active_texture_mask = (
+                "masculine" if self.active_texture_mask != "masculine" else None
+            )
         elif key in (ord('f'), ord('F')):
-            # Toggle feminine mask
-            self.active_texture_mask = "feminine" if self.active_texture_mask != "feminine" else None
+            self.active_texture_mask = (
+                "feminine" if self.active_texture_mask != "feminine" else None
+            )
         elif key in (ord('w'), ord('W')):
-            # Toggle wireframe debug mask
-            self.active_texture_mask = "debug" if self.active_texture_mask != "debug" else None
+            self.active_texture_mask = (
+                "debug" if self.active_texture_mask != "debug" else None
+            )
         elif key in (ord('n'), ord('N')):
-            # Disable all texture masks
             self.active_texture_mask = None
+
+        # Gesture control toggle
+        elif key in (ord('g'), ord('G')):
+            self.gesture_detector.set_enabled(not self.gesture_detector.enabled)
+            status = "enabled" if self.gesture_detector.enabled else "disabled"
+            print(f"Gesture detection {status}")
 
         return True
 
@@ -316,12 +545,17 @@ class FilterApplication:
         print(f"\nAR Face Filter Initialized")
         print(f"  2D Filters: {len(self.filters)}")
         print(f"  3D Texture Masks: {len(self.texture_masks)}")
+        print(f"  Gesture Detection: {'Enabled' if self.gesture_detector.enabled else 'Disabled'}")
         print(f"\nControls:")
         print(f"  1-4: Toggle 2D stickers")
         print(f"  M/F/W: Switch texture masks (Masculine/Feminine/Wireframe)")
         print(f"  N: Disable texture masks")
+        print(f"  G: Toggle gesture detection")
         print(f"  A/D: All 2D filters on/off")
-        print(f"  Q: Quit\n")
+        print(f"  Q: Quit")
+        print(f"\nGesture Controls:")
+        print(f"  Open Mouth: Cycle through texture masks")
+        print(f"  Raise Eyebrows: Toggle glasses filter\n")
 
         self.running = True
 
@@ -331,9 +565,16 @@ class FilterApplication:
                 if not success:
                     break
 
-                for face in self.face_detector.detect(frame):
+                faces = self.face_detector.detect(frame)
+                
+                for face in faces:
+                    # Process gestures for first face only
+                    if face == faces[0]:
+                        self.gesture_detector.update(face)
+
                     # Apply texture mask FIRST (base layer)
-                    if self.active_texture_mask and self.active_texture_mask in self.texture_masks:
+                    if (self.active_texture_mask and 
+                        self.active_texture_mask in self.texture_masks):
                         mask = self.texture_masks[self.active_texture_mask]
                         frame = self._apply_texture_mask(frame, face, mask)
 
@@ -345,11 +586,18 @@ class FilterApplication:
                     if config.SHOW_LANDMARKS:
                         frame = self._draw_landmarks(frame, face)
 
+                # Draw UI elements
                 self._update_fps()
                 if config.FPS_DISPLAY:
                     frame = self._draw_fps(frame)
                 if config.SHOW_INSTRUCTIONS:
                     frame = self._draw_instructions(frame)
+                
+                # Draw gesture status (right side)
+                frame = self._draw_gesture_status(frame)
+                
+                # Draw gesture trigger messages (top center)
+                frame = self._draw_gesture_messages(frame)
 
                 cv2.imshow(config.WINDOW_NAME, frame)
                 if (k := cv2.waitKey(1) & 0xFF) != 255 and not self._handle_keyboard(k):
