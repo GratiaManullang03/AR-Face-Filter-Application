@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+build/
+dist/
+*.egg-info/
+
+# Environment
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+assets/*.png
+assets/*.jpg
+assets/*.jpeg
+!assets/.gitkeep
+
+# Camera recordings (if added in future)
+recordings/
+*.avi
+*.mp4
+
+# Model cache (MediaPipe)
+.mediapipe/
+
+.claude/

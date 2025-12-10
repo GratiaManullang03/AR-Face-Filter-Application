@@ -1,0 +1,11 @@
+version: "3.9"
+
+services:
+  ar-face-filter:
+    # Development overrides
+    volumes:
+      - ./src:/app/src  # Hot reload source code
+      - ./main.py:/app/main.py
+      - ./assets:/app/assets  # Mount assets for easy updates
+    environment:
+      PYTHONUNBUFFERED: 1  # See output immediately
