@@ -159,6 +159,21 @@ class FaceDetector:
 
         return (avg_x, avg_y)
 
+    def get_landmarks_as_array(
+        self,
+        face_landmarks: FaceLandmarks
+    ) -> np.ndarray:
+        """
+        Get all landmarks as a NumPy array for mesh rendering.
+
+        Args:
+            face_landmarks: FaceLandmarks object
+
+        Returns:
+            Nx2 NumPy array of landmark coordinates (x, y)
+        """
+        return np.array(face_landmarks.landmarks, dtype=np.float32)
+
     def release(self) -> None:
         """Release MediaPipe resources."""
         try:

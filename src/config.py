@@ -168,6 +168,82 @@ FILTERS: Dict[str, FilterConfig] = {
     )
 }
 
+# Texture mask configurations
+TEXTURE_MASKS: Dict[str, "TextureMaskConfig"] = {}  # Will be populated below
+
+
+@dataclass
+class TextureMaskConfig:
+    """Configuration for face mesh texture masks."""
+    asset_path: Path
+    opacity: float  # 0.0 to 1.0
+    debug_wireframe: bool  # Show triangle wireframe
+    subsample: int  # Render every Nth triangle (1 = all)
+
+
+# MediaPipe Face Mesh Triangulation
+# Converted from mediapipe.solutions.face_mesh.FACEMESH_TESSELATION
+# This creates triangles from the edge connections
+def _build_face_mesh_triangles():
+    """
+    Build triangle list from MediaPipe FACEMESH_TESSELATION connections.
+    FACEMESH_TESSELATION provides edges, we need to convert to triangles.
+    """
+    import mediapipe as mp
+
+    # Get the tesselation (edge connections)
+    tesselation = mp.solutions.face_mesh.FACEMESH_TESSELATION
+
+    # Build adjacency map
+    adjacency = {}
+    for edge in tesselation:
+        a, b = edge
+        if a not in adjacency:
+            adjacency[a] = set()
+        if b not in adjacency:
+            adjacency[b] = set()
+        adjacency[a].add(b)
+        adjacency[b].add(a)
+
+    # Find triangles by looking for cycles of length 3
+    triangles = set()
+    for a in adjacency:
+        for b in adjacency[a]:
+            if b > a:  # Avoid duplicates
+                # Find common neighbors
+                common = adjacency[a] & adjacency[b]
+                for c in common:
+                    if c > b:  # Ensure unique ordering
+                        triangle = tuple(sorted([a, b, c]))
+                        triangles.add(triangle)
+
+    return list(triangles)
+
+# Generate triangles on module import
+FACE_MESH_TRIANGLES = _build_face_mesh_triangles()
+
+# Initialize texture masks
+TEXTURE_MASKS["masculine"] = TextureMaskConfig(
+    asset_path=ASSETS_DIR / "faceMasculine.jpg",
+    opacity=0.7,
+    debug_wireframe=False,
+    subsample=1
+)
+
+TEXTURE_MASKS["feminine"] = TextureMaskConfig(
+    asset_path=ASSETS_DIR / "faceFeminine.jpg",
+    opacity=0.7,
+    debug_wireframe=False,
+    subsample=1
+)
+
+TEXTURE_MASKS["debug"] = TextureMaskConfig(
+    asset_path=ASSETS_DIR / "faceMesh.png",
+    opacity=0.5,
+    debug_wireframe=True,
+    subsample=1
+)
+
 # Display settings
 WINDOW_NAME = "AR Face Filter"
 FPS_DISPLAY = True
@@ -181,3 +257,6 @@ DEFAULT_ACTIVE_FILTERS = {
     "beard": False,
     "headband": False
 }
+
+# Default active texture mask (None by default)
+DEFAULT_ACTIVE_TEXTURE_MASK = None  # Can be "masculine", "feminine", or "debug"
