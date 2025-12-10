@@ -342,7 +342,7 @@ TEXTURE_MASKS["debug"] = TextureMaskConfig(
 
 # Custom texture mask (001.png)
 TEXTURE_MASKS["custom"] = TextureMaskConfig(
-    asset_path=ASSETS_DIR / "001.png",
+    asset_path=ASSETS_DIR / "custom.png",
     opacity=0.7,
     debug_wireframe=False,
     subsample=1

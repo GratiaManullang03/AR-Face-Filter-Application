@@ -460,7 +460,7 @@ class FilterApplication:
                    (10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
         y += h
 
-        mask_keys = {"M": "masculine", "F": "feminine", "W": "debug", "C": "custom01"}
+        mask_keys = {"M": "masculine", "F": "feminine", "W": "debug", "C": "custom"}
         for key, name in mask_keys.items():
             status = "ACTIVE" if self.active_texture_mask == name else "off"
             color = (0, 255, 255) if self.active_texture_mask == name else (100, 100, 100)
@@ -527,7 +527,7 @@ class FilterApplication:
             )
         elif key in (ord('c'), ord('C')):
             self.active_texture_mask = (
-                "custom01" if self.active_texture_mask != "custom01" else None
+                "custom" if self.active_texture_mask != "custom" else None
             )
         elif key in (ord('n'), ord('N')):
             self.active_texture_mask = None
