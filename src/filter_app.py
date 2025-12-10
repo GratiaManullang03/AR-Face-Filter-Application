@@ -460,7 +460,7 @@ class FilterApplication:
                    (10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
         y += h
 
-        mask_keys = {"M": "masculine", "F": "feminine", "W": "debug"}
+        mask_keys = {"M": "masculine", "F": "feminine", "W": "debug", "C": "custom01"}
         for key, name in mask_keys.items():
             status = "ACTIVE" if self.active_texture_mask == name else "off"
             color = (0, 255, 255) if self.active_texture_mask == name else (100, 100, 100)
@@ -525,6 +525,10 @@ class FilterApplication:
             self.active_texture_mask = (
                 "debug" if self.active_texture_mask != "debug" else None
             )
+        elif key in (ord('c'), ord('C')):
+            self.active_texture_mask = (
+                "custom01" if self.active_texture_mask != "custom01" else None
+            )
         elif key in (ord('n'), ord('N')):
             self.active_texture_mask = None
 
@@ -548,7 +552,7 @@ class FilterApplication:
         print(f"  Gesture Detection: {'Enabled' if self.gesture_detector.enabled else 'Disabled'}")
         print(f"\nControls:")
         print(f"  1-4: Toggle 2D stickers")
-        print(f"  M/F/W: Switch texture masks (Masculine/Feminine/Wireframe)")
+        print(f"  M/F/W/C: Switch texture masks (Masculine/Feminine/Wireframe/Custom)")
         print(f"  N: Disable texture masks")
         print(f"  G: Toggle gesture detection")
         print(f"  A/D: All 2D filters on/off")

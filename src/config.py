@@ -117,7 +117,7 @@ MOUTH_OPEN_REQUIRED_FRAMES = 5  # Hold for 5 frames to trigger
 
 # Brow Raise Ratio = (brow_to_eye_distance) / (face_height)
 # When brows are raised, this ratio increases
-BROW_RAISE_THRESHOLD = 0.085  # Ratio threshold for brow raise
+BROW_RAISE_THRESHOLD = 0.11  # Ratio threshold for brow raise
 BROW_RAISE_COOLDOWN_FRAMES = 30  # ~1 second at 30fps
 BROW_RAISE_REQUIRED_FRAMES = 5  # Hold for 5 frames to trigger
 
@@ -337,6 +337,14 @@ TEXTURE_MASKS["debug"] = TextureMaskConfig(
     asset_path=ASSETS_DIR / "faceMesh.png",
     opacity=0.5,
     debug_wireframe=True,
+    subsample=1
+)
+
+# Custom texture mask (001.png)
+TEXTURE_MASKS["custom"] = TextureMaskConfig(
+    asset_path=ASSETS_DIR / "001.png",
+    opacity=0.7,
+    debug_wireframe=False,
     subsample=1
 )
 
