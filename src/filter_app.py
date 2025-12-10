@@ -167,6 +167,11 @@ class FilterApplication:
         # Get landmarks as numpy array
         face_landmarks_array = self.face_detector.get_landmarks_as_array(face)
 
+        # Special case: debug wireframe mode (no texture warping needed)
+        if mask.config.debug_wireframe and self.active_texture_mask == "debug":
+            # Just draw wireframe directly without texture warping
+            return self._draw_wireframe(frame, face_landmarks_array)
+
         # Render the texture mask
         try:
             frame = mask.renderer.render(
@@ -177,6 +182,36 @@ class FilterApplication:
         except Exception:
             # Silently handle rendering errors (can happen with extreme poses)
             pass
+
+        return frame
+
+    def _draw_wireframe(
+        self,
+        frame: np.ndarray,
+        landmarks: np.ndarray
+    ) -> np.ndarray:
+        """
+        Draw wireframe overlay for debugging.
+
+        Args:
+            frame: Frame to draw on
+            landmarks: Face landmarks (Nx2 array)
+
+        Returns:
+            Frame with wireframe overlay
+        """
+        # Get triangles from config
+        triangles = config.FACE_MESH_TRIANGLES
+
+        # Draw each triangle edge
+        for tri_indices in triangles:
+            pt1 = tuple(landmarks[tri_indices[0]].astype(int))
+            pt2 = tuple(landmarks[tri_indices[1]].astype(int))
+            pt3 = tuple(landmarks[tri_indices[2]].astype(int))
+
+            cv2.line(frame, pt1, pt2, (0, 255, 0), 1, cv2.LINE_AA)
+            cv2.line(frame, pt2, pt3, (0, 255, 0), 1, cv2.LINE_AA)
+            cv2.line(frame, pt3, pt1, (0, 255, 0), 1, cv2.LINE_AA)
 
         return frame
 
