@@ -14,6 +14,7 @@ from . import config
 class FaceLandmarks:
     """Container for facial landmarks data."""
     landmarks: List[Tuple[int, int]]  # List of (x, y) coordinates
+    landmarks_3d: List[Tuple[float, float, float]]  # List of (x, y, z) normalized coordinates
     raw_landmarks: any  # Raw MediaPipe landmarks object
 
 
@@ -74,8 +75,10 @@ class FaceDetector:
         for face_landmarks in results.multi_face_landmarks:
             # Convert normalized landmarks to pixel coordinates
             landmarks = self._normalize_landmarks(face_landmarks, width, height)
+            landmarks_3d = self._extract_3d_landmarks(face_landmarks)
             all_faces.append(FaceLandmarks(
                 landmarks=landmarks,
+                landmarks_3d=landmarks_3d,
                 raw_landmarks=face_landmarks
             ))
 
@@ -106,6 +109,26 @@ class FaceDetector:
             landmarks.append((x, y))
 
         return landmarks
+
+    def _extract_3d_landmarks(
+        self,
+        face_landmarks
+    ) -> List[Tuple[float, float, float]]:
+        """
+        Extract 3D landmarks with z-depth information.
+
+        Args:
+            face_landmarks: MediaPipe face landmarks object
+
+        Returns:
+            List of (x, y, z) normalized coordinates
+        """
+        landmarks_3d = []
+
+        for landmark in face_landmarks.landmark:
+            landmarks_3d.append((landmark.x, landmark.y, landmark.z))
+
+        return landmarks_3d
 
     def get_landmark_point(
         self,

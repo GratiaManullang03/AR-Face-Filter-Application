@@ -96,6 +96,25 @@ class FacialLandmarks:
 
 
 # ============================================================================
+# CANONICAL FACE MESH UV COORDINATES
+# ============================================================================
+# Standard UV map for MediaPipe Face Mesh (468 landmarks).
+# Used for mapping "unwrapped" face textures correctly without running detection on the texture itself.
+# Values are normalized (0.0 to 1.0).
+#
+# NOTE: Populate this list with the 468 UV pairs if using standard UV maps.
+# Since the full list is large, it is set to None by default.
+# The system will fallback to 'detection-based' mapping if this is None.
+CANONICAL_FACE_MESH_UV = None
+
+# Example format (if populated):
+# CANONICAL_FACE_MESH_UV = [
+#     (0.5, 0.5), # Landmark 0
+#     (0.5, 0.4), # Landmark 1
+#     ...
+# ]
+
+# ============================================================================
 # GESTURE DETECTION CONFIGURATION
 # ============================================================================
 
