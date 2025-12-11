@@ -34,7 +34,7 @@ class MeshRenderer:
 
         print(f"MeshRenderer initialized with {len(self.triangles)} triangles")
 
-    def calibrate_winding_order(self, landmarks_3d: np.ndarray) -> None:
+    def calibrate_winding_order(self, landmarks_3d: np.ndarray) -> bool:
         """
         Calibrate triangle winding order based on the first detected face.
         Ensures all triangles are wound Counter-Clockwise (CCW) relative to the camera.
@@ -42,12 +42,37 @@ class MeshRenderer:
         
         Args:
             landmarks_3d: Nx3 array of 3D landmarks (x, y, z) from a frontal face
+            
+        Returns:
+            True if calibration was successful (face was frontal enough), False otherwise.
         """
         if self.corrected_triangles is not None:
-            return
+            return True
+
+        # Check if face is frontal enough for calibration
+        # Use Outer Eye landmarks to check for Yaw
+        # Left Eye Outer: 33, Right Eye Outer: 263 (detected as 362 in config, checking standard MP)
+        # Using indices from config would be safer but let's assume standard MP topology here or use passed indices.
+        # Let's use indices 33 (Left) and 263 (Right) as they are standard "outer" approx.
+        # Actually, let's look at the Z difference.
+        
+        # Standard MediaPipe indices:
+        # 33: Left Eye Outer corner
+        # 263: Right Eye Outer corner
+        
+        left_eye_z = landmarks_3d[33][2]
+        right_eye_z = landmarks_3d[263][2]
+        
+        # Calculate Yaw-ish metric (difference in depth)
+        yaw_diff = abs(left_eye_z - right_eye_z)
+        
+        # Threshold: 0.1 is usually a good heuristic for "mostly frontal"
+        if yaw_diff > 0.1:
+            # Face is rotated, do not calibrate yet
+            return False
 
         print("Calibrating mesh winding order for backface culling...")
-        self.corrected_triangles = []
+        corrected = []
         
         flipped_count = 0
         
@@ -67,12 +92,14 @@ class MeshRenderer:
             if normal[2] > 0:
                 # Flip winding: (0, 1, 2) -> (0, 2, 1)
                 new_tri = (tri[0], tri[2], tri[1])
-                self.corrected_triangles.append(new_tri)
+                corrected.append(new_tri)
                 flipped_count += 1
             else:
-                self.corrected_triangles.append(tri)
-                
+                corrected.append(tri)
+        
+        self.corrected_triangles = corrected
         print(f"Mesh calibration complete: Flipped {flipped_count}/{len(self.triangles)} triangles")
+        return True
 
     def set_texture_landmarks_from_detection(
         self,
@@ -256,9 +283,11 @@ class MeshRenderer:
         ])
 
         # ============================================================
-        # BACKFACE CULLING - Skip triangles facing away from camera
+        # BACKFACE CULLING & LIGHTING
         # ============================================================
-        # Use 3D landmarks with Z-depth for accurate culling
+        # Use 3D landmarks with Z-depth for accurate culling and lighting
+        brightness = 1.0
+        
         if hasattr(self, 'landmarks_3d') and self.landmarks_3d is not None:
             # Get 3D vertices for this triangle
             v1 = self.landmarks_3d[triangle_indices[0]]
@@ -274,12 +303,35 @@ class MeshRenderer:
 
             # Cross product gives us the normal vector
             normal = np.cross(edge1, edge2)
+            
+            # Normalize normal vector for lighting
+            norm_len = np.linalg.norm(normal)
+            if norm_len > 0:
+                normal_unit = normal / norm_len
+            else:
+                normal_unit = np.array([0, 0, -1]) # Fallback
 
             # Camera is looking down negative Z axis
             # After calibration, all visible triangles should have normal.z < 0
             # If normal.z > 0, it's a backface -> CULL
             if normal[2] > 0:
                 return
+            
+            # --- LIGHTING CALCULATION ---
+            # Simple directional light from camera (0, 0, -1)
+            # Dot product of Normal and LightDir
+            # LightDir is (0, 0, -1). Normal points to camera (negative Z).
+            # So we want alignment between Normal and (0, 0, -1).
+            # dot = nx*0 + ny*0 + nz*(-1) = -nz
+            
+            # Since normal.z is negative for visible triangles, -normal.z is positive.
+            intensity = -normal_unit[2] 
+            intensity = max(0.0, min(1.0, intensity))
+            
+            # Ambient + Diffuse
+            # Make lighting very subtle to avoid "faceted" low-poly look
+            # Ambient 0.85, Diffuse 0.15
+            brightness = 0.85 + 0.15 * intensity
         
         # Get bounding rectangles
         src_rect = cv2.boundingRect(src_tri)
@@ -323,8 +375,15 @@ class MeshRenderer:
             borderMode=cv2.BORDER_REFLECT_101
         )
 
+        # Convert to float for processing
+        warped = warped.astype(np.float32)
+
+        # Apply Lighting
+        if brightness != 1.0:
+            warped *= brightness
+
         # Apply mask
-        warped = warped.astype(np.float32) * mask
+        warped *= mask
 
         # Extract destination region
         dst_y1 = max(0, dst_rect[1])

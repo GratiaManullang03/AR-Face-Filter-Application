@@ -50,7 +50,8 @@ class FaceDetector:
         )
 
         # Initialize Stabilizer (One per face ideally, but for simplicity assuming 1 primary face)
-        self.stabilizer = LandmarkStabilizer(alpha=0.6)
+        # Increased alpha for responsiveness (less lag)
+        self.stabilizer = LandmarkStabilizer(alpha=0.7)
 
     def detect(self, frame: np.ndarray) -> List[FaceLandmarks]:
         """

@@ -58,13 +58,13 @@ class LandmarkStabilizer:
     Stabilizes facial landmarks using Exponential Moving Average (EMA) 
     to reduce jitter.
     """
-    def __init__(self, alpha: float = 0.6):
+    def __init__(self, alpha: float = 0.3):
         """
         Args:
             alpha: Smoothing factor (0.0 to 1.0).
                    Lower = smoother but more lag (ghosting).
                    Higher = more responsive but more jitter.
-                   0.6 is a good balance for 30fps.
+                   0.3 is a good balance for 30fps.
         """
         self.alpha = alpha
         self.prev_landmarks: Optional[np.ndarray] = None

@@ -130,7 +130,7 @@ class GestureConfig:
 # Gesture thresholds and settings
 # Mouth Aspect Ratio (MAR) = vertical_distance / horizontal_distance
 # When mouth is open, MAR increases
-MOUTH_OPEN_THRESHOLD = 0.35  # Ratio threshold for mouth open detection
+MOUTH_OPEN_THRESHOLD = 0.65  # Ratio threshold for mouth open detection
 MOUTH_OPEN_COOLDOWN_FRAMES = 30  # ~1 second at 30fps
 MOUTH_OPEN_REQUIRED_FRAMES = 5  # Hold for 5 frames to trigger
 
