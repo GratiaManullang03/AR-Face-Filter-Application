@@ -60,20 +60,43 @@ class TextureMask:
         # OR use Canonical UVs if configured
         print(f"Initializing texture mask: {self.config.asset_path.name}...")
         
-        # Check if we have Canonical UVs available (Priority 1)
+        # Priority 1: Use Global Canonical UVs if available
         if config.CANONICAL_FACE_MESH_UV is not None:
-            # Renderer will handle the mapping in its render method or initialization
+            # Pass directly to renderer (it handles scaling to texture size)
             pass
+            
+        # Priority 2: Try to generate Global Canonical UVs from the Reference Wireframe (faceMesh.png)
+        # This is much more stable than detecting on the individual skin-texture images.
         else:
-            # Fallback: Detect face in texture (Priority 2)
-            print(f"Detecting face in texture for UV mapping...")
+            print("Canonical UVs not set. Attempting to generate from Reference Wireframe...")
+            from .utils import create_texture_landmarks_from_image
+            
+            # Try to find the debug/wireframe image
+            ref_path = config.ASSETS_DIR / "faceMesh.png"
+            
+            if ref_path.exists():
+                print(f"Loading reference UVs from: {ref_path.name}")
+                ref_landmarks = create_texture_landmarks_from_image(str(ref_path))
+                
+                if ref_landmarks is not None:
+                    # Normalize landmarks (0.0 - 1.0) to create Canonical UVs
+                    ref_h, ref_w = cv2.imread(str(ref_path)).shape[:2]
+                    config.CANONICAL_FACE_MESH_UV = ref_landmarks / np.array([ref_w, ref_h], dtype=np.float32)
+                    print("✓ Global Canonical UVs generated successfully!")
+                else:
+                    print("Warning: Failed to detect face in reference image.")
+            else:
+                print("Warning: Reference image 'faceMesh.png' not found.")
+
+        # Priority 3: Fallback - Detect face in this specific texture
+        # (Only happens if Priority 1 & 2 failed)
+        if config.CANONICAL_FACE_MESH_UV is None:
+            print(f"Fallback: Detecting face in texture {self.config.asset_path.name}...")
             success = self.renderer.set_texture_landmarks_from_detection(
                 str(self.config.asset_path)
             )
-
             if not success:
                 print(f"ERROR: Could not detect face in texture image!")
-                print(f"Make sure {self.config.asset_path.name} contains a clear frontal face.")
                 return False
 
         print(f"✓ Loaded texture mask: {self.config.asset_path.name}")

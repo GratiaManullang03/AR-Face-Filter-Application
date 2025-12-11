@@ -223,7 +223,10 @@ class UIManager:
 
         # General controls
         y += 5
-        cv2.putText(frame, "[A] All 2D ON  [D] All OFF  [N] No Mask  [Q] Quit",
+        cv2.putText(frame, "[S] Screenshot  [Q] Quit",
+                   (10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        y += h
+        cv2.putText(frame, "[A] All 2D ON  [D] All OFF  [N] No Mask",
                    (10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
         return frame
 

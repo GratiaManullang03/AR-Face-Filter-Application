@@ -8,6 +8,7 @@ import numpy as np
 from typing import List, Optional, Tuple
 from dataclasses import dataclass
 from . import config
+from .utils import LandmarkStabilizer
 
 
 @dataclass
@@ -48,6 +49,9 @@ class FaceDetector:
             min_tracking_confidence=self.min_tracking_confidence
         )
 
+        # Initialize Stabilizer (One per face ideally, but for simplicity assuming 1 primary face)
+        self.stabilizer = LandmarkStabilizer(alpha=0.6)
+
     def detect(self, frame: np.ndarray) -> List[FaceLandmarks]:
         """
         Detect faces and extract landmarks from a frame.
@@ -66,88 +70,70 @@ class FaceDetector:
 
         # Check if any face was detected
         if not results.multi_face_landmarks:
+            self.stabilizer.reset() # Reset smoothing if face lost
             return []
 
         # Process all detected faces
         all_faces = []
         height, width = frame.shape[:2]
 
-        for face_landmarks in results.multi_face_landmarks:
+        # NOTE: Currently smoothing works best for single face tracking.
+        # If tracking multiple faces, we would need a dict of stabilizers mapped to face IDs.
+        # For this prototype, we just stabilize the first face found.
+        
+        for i, face_landmarks in enumerate(results.multi_face_landmarks):
             # Convert normalized landmarks to pixel coordinates
-            landmarks = self._normalize_landmarks(face_landmarks, width, height)
-            landmarks_3d = self._extract_3d_landmarks(face_landmarks)
+            # Get raw numpy arrays for stabilization
+            raw_landmarks_np = self._normalize_landmarks_np(face_landmarks, width, height)
+            raw_landmarks_3d_np = self._extract_3d_landmarks_np(face_landmarks)
+
+            # Apply stabilization (only to first face for now to avoid ID swapping issues)
+            if i == 0:
+                smooth_landmarks, smooth_landmarks_3d = self.stabilizer.update(
+                    raw_landmarks_np, raw_landmarks_3d_np
+                )
+            else:
+                smooth_landmarks = raw_landmarks_np
+                smooth_landmarks_3d = raw_landmarks_3d_np
+
+            # Convert back to list of tuples for compatibility
+            landmarks_list = [tuple(map(int, pt)) for pt in smooth_landmarks]
+            landmarks_3d_list = [tuple(map(float, pt)) for pt in smooth_landmarks_3d]
+
             all_faces.append(FaceLandmarks(
-                landmarks=landmarks,
-                landmarks_3d=landmarks_3d,
+                landmarks=landmarks_list,
+                landmarks_3d=landmarks_3d_list,
                 raw_landmarks=face_landmarks
             ))
 
         return all_faces
 
-    def _normalize_landmarks(
+    def _normalize_landmarks_np(
         self,
         face_landmarks,
         width: int,
         height: int
-    ) -> List[Tuple[int, int]]:
-        """
-        Convert normalized landmarks to pixel coordinates.
+    ) -> np.ndarray:
+        """Convert normalized landmarks to pixel coordinates (NumPy)."""
+        coords = np.array([(lm.x * width, lm.y * height) for lm in face_landmarks.landmark], dtype=np.float32)
+        return coords
 
-        Args:
-            face_landmarks: MediaPipe face landmarks object
-            width: Frame width
-            height: Frame height
-
-        Returns:
-            List of (x, y) pixel coordinates
-        """
-        landmarks = []
-
-        for landmark in face_landmarks.landmark:
-            x = int(landmark.x * width)
-            y = int(landmark.y * height)
-            landmarks.append((x, y))
-
-        return landmarks
-
-    def _extract_3d_landmarks(
+    def _extract_3d_landmarks_np(
         self,
         face_landmarks
-    ) -> List[Tuple[float, float, float]]:
-        """
-        Extract 3D landmarks with z-depth information.
-
-        Args:
-            face_landmarks: MediaPipe face landmarks object
-
-        Returns:
-            List of (x, y, z) normalized coordinates
-        """
-        landmarks_3d = []
-
-        for landmark in face_landmarks.landmark:
-            landmarks_3d.append((landmark.x, landmark.y, landmark.z))
-
-        return landmarks_3d
+    ) -> np.ndarray:
+        """Extract 3D landmarks (NumPy)."""
+        coords = np.array([(lm.x, lm.y, lm.z) for lm in face_landmarks.landmark], dtype=np.float32)
+        return coords
 
     def get_landmark_point(
         self,
         face_landmarks: FaceLandmarks,
         index: int
     ) -> Optional[Tuple[int, int]]:
-        """
-        Get a specific landmark point by index.
-
-        Args:
-            face_landmarks: FaceLandmarks object
-            index: Landmark index
-
-        Returns:
-            (x, y) coordinate or None if index is invalid
-        """
+        """Get a specific landmark point by index."""
         if index < 0 or index >= len(face_landmarks.landmarks):
             return None
-
         return face_landmarks.landmarks[index]
 
     def get_landmarks_center(
@@ -155,28 +141,16 @@ class FaceDetector:
         face_landmarks: FaceLandmarks,
         indices: List[int]
     ) -> Tuple[int, int]:
-        """
-        Calculate the center point of multiple landmarks.
-
-        Args:
-            face_landmarks: FaceLandmarks object
-            indices: List of landmark indices
-
-        Returns:
-            (x, y) center coordinate
-        """
+        """Calculate the center point of multiple landmarks."""
         points = [
             self.get_landmark_point(face_landmarks, idx)
             for idx in indices
         ]
-
-        # Filter out None values
         valid_points = [p for p in points if p is not None]
 
         if not valid_points:
             return (0, 0)
 
-        # Calculate average position
         avg_x = sum(p[0] for p in valid_points) // len(valid_points)
         avg_y = sum(p[1] for p in valid_points) // len(valid_points)
 
@@ -186,15 +160,7 @@ class FaceDetector:
         self,
         face_landmarks: FaceLandmarks
     ) -> np.ndarray:
-        """
-        Get all landmarks as a NumPy array for mesh rendering.
-
-        Args:
-            face_landmarks: FaceLandmarks object
-
-        Returns:
-            Nx2 NumPy array of landmark coordinates (x, y)
-        """
+        """Get all landmarks as a NumPy array for mesh rendering."""
         return np.array(face_landmarks.landmarks, dtype=np.float32)
 
     def release(self) -> None:
@@ -206,10 +172,8 @@ class FaceDetector:
             pass  # Already closed
 
     def __enter__(self):
-        """Context manager entry."""
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """Context manager exit."""
         self.release()
         return False
