@@ -1,12 +1,21 @@
 """
-Face Mesh Texture Rendering module - FIXED VERSION.
+Face Mesh Texture Rendering module - UPDATED VERSION.
 Implements proper UV mapping and triangle-based affine warping.
+Compatible with MediaPipe Face Landmarker API.
 """
 
 import cv2
 import numpy as np
+import logging
 from typing import List, Tuple, Optional
+from mediapipe.tasks import python
+from mediapipe.tasks.python import vision
+from pathlib import Path
 from . import config
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 class MeshRenderer:
@@ -103,53 +112,75 @@ class MeshRenderer:
 
     def set_texture_landmarks_from_detection(
         self,
-        texture_path: str
+        texture_path: str,
+        model_path: Optional[str] = None
     ) -> bool:
         """
-        Detect face landmarks in the texture image using MediaPipe.
+        Detect face landmarks in the texture image using MediaPipe Face Landmarker API.
         This gives us the UV coordinates for warping.
 
         Args:
             texture_path: Path to the texture image
+            model_path: Path to face_landmarker.task model file
 
         Returns:
             True if landmarks were detected successfully
         """
-        import mediapipe as mp
+        try:
+            # Determine model path
+            if model_path is None:
+                model_path = str(Path(__file__).parent.parent / "models" / "face_landmarker.task")
 
-        # Initialize MediaPipe Face Mesh for static images
-        mp_face_mesh = mp.solutions.face_mesh
-        with mp_face_mesh.FaceMesh(
-            static_image_mode=True,
-            max_num_faces=1,
-            refine_landmarks=True,
-            min_detection_confidence=0.5
-        ) as face_mesh:
+            if not Path(model_path).exists():
+                logger.error(f"Face Landmarker model not found at {model_path}")
+                return False
+
+            # Initialize Face Landmarker with IMAGE mode for static texture
+            base_options = python.BaseOptions(model_asset_path=model_path)
+            options = vision.FaceLandmarkerOptions(
+                base_options=base_options,
+                running_mode=vision.RunningMode.IMAGE,  # IMAGE mode for static texture
+                num_faces=1,
+                min_face_detection_confidence=0.5,
+                min_tracking_confidence=0.5
+            )
+
             # Load and process the texture image
             texture = cv2.imread(texture_path)
             if texture is None:
-                print(f"Error: Could not load texture from {texture_path}")
+                logger.error(f"Could not load texture from {texture_path}")
                 return False
 
             # Convert BGR to RGB
             rgb = cv2.cvtColor(texture, cv2.COLOR_BGR2RGB)
-            results = face_mesh.process(rgb)
-
-            if not results.multi_face_landmarks:
-                print("Warning: No face detected in texture image")
-                return False
-
-            # Extract landmarks and convert to pixel coordinates
-            face_landmarks = results.multi_face_landmarks[0]
             h, w = texture.shape[:2]
 
-            self.texture_landmarks = np.zeros((len(face_landmarks.landmark), 2), dtype=np.float32)
-            for i, landmark in enumerate(face_landmarks.landmark):
-                self.texture_landmarks[i, 0] = landmark.x * w
-                self.texture_landmarks[i, 1] = landmark.y * h
+            # Convert to MediaPipe Image
+            import mediapipe as mp
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
 
-            print(f"Detected {len(self.texture_landmarks)} landmarks in texture")
-            return True
+            # Create landmarker and detect
+            with vision.FaceLandmarker.create_from_options(options) as landmarker:
+                results = landmarker.detect(mp_image)
+
+                if not results.face_landmarks:
+                    logger.warning("No face detected in texture image")
+                    return False
+
+                # Extract landmarks and convert to pixel coordinates
+                face_landmarks = results.face_landmarks[0]
+
+                self.texture_landmarks = np.zeros((len(face_landmarks), 2), dtype=np.float32)
+                for i, landmark in enumerate(face_landmarks):
+                    self.texture_landmarks[i, 0] = landmark.x * w
+                    self.texture_landmarks[i, 1] = landmark.y * h
+
+                logger.info(f"Detected {len(self.texture_landmarks)} landmarks in texture")
+                return True
+
+        except Exception as e:
+            logger.error(f"Error detecting landmarks in texture: {e}")
+            return False
 
     def set_texture_landmarks_manual(
         self,

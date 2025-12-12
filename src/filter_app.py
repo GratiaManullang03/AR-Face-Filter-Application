@@ -12,6 +12,7 @@ from typing import Dict, List, Optional
 
 from .camera import Camera
 from .face_detector import FaceDetector, FaceLandmarks
+from .hand_detector import HandGestureDetector
 from .graphics import GraphicsEngine
 from .gesture_detector import GestureDetector, GestureType, GestureEvent
 from . import config
@@ -26,17 +27,21 @@ class FilterApplication:
         """Initialize the filter application."""
         self.camera = Camera()
         self.face_detector = FaceDetector()
+        self.hand_detector = HandGestureDetector()  # Hand gesture for capture
         self.graphics = GraphicsEngine()
         self.gesture_detector = GestureDetector(
             enabled=config.GESTURE_CONTROL_ENABLED
         )
         self.ui = UIManager()
-        
+
         self.filters: Dict[str, ARFilter] = {}
         self.texture_masks: Dict[str, TextureMask] = {}
         self.active_filters: Dict[str, bool] = {}
         self.active_texture_mask: Optional[str] = None
         self.running = False
+
+        # Hand gesture visualization
+        self.show_hand_landmarks = False
 
         # Filter/mask lists for cycling
         self._filter_names: List[str] = []
@@ -45,13 +50,16 @@ class FilterApplication:
         # Load all filters
         self._load_filters()
         self._load_texture_masks()
-        
+
         # Initialize active filters state
         self.active_filters = config.DEFAULT_ACTIVE_FILTERS.copy()
         self.active_texture_mask = config.DEFAULT_ACTIVE_TEXTURE_MASK
 
         # Setup gesture callbacks
         self._setup_gesture_callbacks()
+
+        # Setup hand gesture callback for OK gesture -> capture
+        self.hand_detector.register_ok_gesture_callback(self._on_ok_gesture_capture)
 
     def _load_filters(self) -> None:
         """Load all AR filters from configuration."""
@@ -122,6 +130,12 @@ class FilterApplication:
                 f"BROWS RAISED → Glasses: {status}",
                 (0, 255, 0)
             )
+
+    def _on_ok_gesture_capture(self) -> None:
+        """Handle OK gesture (👌) for screenshot capture."""
+        if hasattr(self, 'last_captured_frame') and self.last_captured_frame is not None:
+            self._save_screenshot(self.last_captured_frame)
+            self.ui.add_gesture_message("👌 OK GESTURE → Photo Captured!", (255, 255, 0))
 
     def _save_screenshot(self, frame: np.ndarray) -> None:
         """Save the current frame as a screenshot."""
@@ -279,6 +293,12 @@ class FilterApplication:
             status = "enabled" if self.gesture_detector.enabled else "disabled"
             print(f"Gesture detection {status}")
 
+        # Hand landmarks visualization toggle
+        elif key in (ord('h'), ord('H')):
+            self.show_hand_landmarks = not self.show_hand_landmarks
+            status = "ON" if self.show_hand_landmarks else "OFF"
+            print(f"Hand landmarks visualization: {status}")
+
         return True
 
     def run(self) -> None:
@@ -298,13 +318,18 @@ class FilterApplication:
                 success, frame = self.camera.read()
                 if not success:
                     break
-                
-                # Keep a clean copy for processing if needed, 
+
+                # Keep a clean copy for processing if needed,
                 # but usually we want to screenshot the AR result.
                 display_frame = frame.copy()
 
+                # Detect faces
                 faces = self.face_detector.detect(frame) # Detect on raw frame
-                
+
+                # Detect hands for OK gesture capture
+                hands = self.hand_detector.detect(frame)
+
+                # Process face filters and gestures
                 for face in faces:
                     if face == faces[0]:
                         self.gesture_detector.update(face)
@@ -323,12 +348,19 @@ class FilterApplication:
                     if config.SHOW_LANDMARKS:
                         display_frame = self.ui.draw_landmarks(display_frame, face)
 
+                # Draw hand landmarks if enabled
+                if self.show_hand_landmarks and hands:
+                    display_frame = self.hand_detector.draw_hands(display_frame, hands)
+
+                # Store frame for OK gesture capture
+                self.last_captured_frame = display_frame.copy()
+
                 # Draw UI
                 self.ui.update_fps()
                 display_frame = self.ui.draw_fps(display_frame)
                 display_frame = self.ui.draw_instructions(
-                    display_frame, 
-                    self.active_filters, 
+                    display_frame,
+                    self.active_filters,
                     self.active_texture_mask,
                     self.gesture_detector.enabled
                 )
@@ -336,7 +368,7 @@ class FilterApplication:
                 display_frame = self.ui.draw_gesture_messages(display_frame)
 
                 cv2.imshow(config.WINDOW_NAME, display_frame)
-                
+
                 # Pass display_frame to handle_keyboard for screenshot
                 if (k := cv2.waitKey(1) & 0xFF) != 255:
                     if not self._handle_keyboard(k, display_frame):
@@ -349,4 +381,5 @@ class FilterApplication:
         self.running = False
         self.camera.release()
         self.face_detector.release()
+        self.hand_detector.release()  # Release hand detector
         cv2.destroyAllWindows()

@@ -1,16 +1,18 @@
 # AR Face Filter Application
 
-A robust, modular, real-time Augmented Reality face filter application built with Python, OpenCV, and MediaPipe. This application detects facial landmarks via webcam and overlays PNG assets that dynamically scale and rotate with head movements.
+A robust, modular, real-time Augmented Reality face filter application built with Python, OpenCV, and **MediaPipe Face Landmarker API (Latest)**. This application detects facial landmarks via webcam and overlays PNG assets that dynamically scale and rotate with head movements.
 
 ## Features
 
-- **Real-time Face Detection**: Uses MediaPipe Face Mesh with 468 facial landmarks
+- **Real-time Face Detection**: Uses MediaPipe Face Landmarker API with 478 facial landmarks
+- **VIDEO Mode**: Optimized timestamp-based tracking for real-time webcam processing
 - **Multiple Face Support**: Detects and applies filters to up to 5 faces simultaneously
 - **Interactive Filter Selection**: Toggle individual filters on/off with keyboard controls
 - **Dynamic Transformations**: Filters automatically scale and rotate with head movement
 - **Alpha Channel Support**: Proper transparency handling for PNG overlays
 - **Clean Architecture**: Modular design with clear separation of concerns
-- **Performance Optimized**: FPS display and efficient processing
+- **Performance Optimized**: FPS display, efficient processing, and built-in smoothing
+- **Proper Error Handling**: Comprehensive logging and error recovery
 
 ## Project Structure
 
@@ -50,8 +52,11 @@ The application follows **Clean Architecture** with distinct layers:
 ### Key Components
 
 #### 1. Face Detection ([face_detector.py](src/face_detector.py))
-- Uses MediaPipe Face Mesh with 468 landmarks
+- Uses **MediaPipe Face Landmarker API** (Latest) with 478 landmarks
+- **VIDEO mode** with timestamp tracking for optimal real-time performance
 - Converts normalized coordinates to pixel positions
+- **Built-in smoothing** when `num_faces=1` + custom EMA stabilizer
+- Proper error handling and logging
 - Calculates center points from multiple landmarks
 
 #### 2. Graphics Engine ([graphics.py](src/graphics.py))
@@ -91,7 +96,24 @@ headband → Forehead/hairline
 pip install -r requirements.txt
 ```
 
-3. **Add filter assets**:
+3. **Download MediaPipe Face Landmarker model**:
+
+The application uses MediaPipe's Face Landmarker API which requires a model file.
+
+**Option A - Automatic (Recommended)**:
+```bash
+./download_models.sh
+```
+
+**Option B - Manual**:
+```bash
+mkdir -p models
+wget -O models/face_landmarker.task https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task
+```
+
+The model file (`face_landmarker.task`, ~3.6MB) will be downloaded to the `models/` directory.
+
+4. **Add filter assets**:
 Place your PNG files (with transparency) in the `assets/` directory:
 - `glasses.png`
 - `mustache.png`

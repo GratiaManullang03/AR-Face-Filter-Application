@@ -43,6 +43,9 @@ recordings/
 # Model cache (MediaPipe)
 .mediapipe/
 
+# MediaPipe models (download separately)
+models/*.task
+
 .claude/
 
-.captures/
+captures/
