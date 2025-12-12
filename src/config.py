@@ -387,3 +387,126 @@ DEFAULT_ACTIVE_TEXTURE_MASK = None  # Can be "masculine", "feminine", or "debug"
 
 # Gesture control settings
 GESTURE_CONTROL_ENABLED = True  # Master toggle for gesture controls
+
+
+# ============================================================================
+# 3D OBJECT CONFIGURATIONS
+# ============================================================================
+
+@dataclass
+class Object3DConfig:
+    """Configuration for a 3D object filter."""
+    name: str
+    obj_path: Path
+    anchor_landmarks: List[int]  # Landmarks for positioning
+    scale_multiplier: float = 1.0  # Scale relative to face size
+    offset_x: float = 0.0  # X offset in object space
+    offset_y: float = 0.0  # Y offset in object space
+    offset_z: float = 0.0  # Z offset in object space
+    rotation_x: float = 0.0  # Rotation around X axis (degrees)
+    rotation_y: float = 0.0  # Rotation around Y axis (degrees)
+    rotation_z: float = 0.0  # Rotation around Z axis (degrees)
+    # Note: subsample removed - LOD system handles performance optimization
+
+
+# 3D Objects directory
+OBJECTS_3D_DIR = ASSETS_DIR / "3d_objects"
+
+# 3D Object configurations
+OBJECTS_3D: Dict[str, Object3DConfig] = {}
+
+# Glasses 3D objects (using RAW models without normalization for now)
+OBJECTS_3D["glasses3d_01"] = Object3DConfig(
+    name="Simple Glasses 3D",
+    obj_path=OBJECTS_3D_DIR / "glasses01" / "glasses01.obj",
+    anchor_landmarks=[
+        FacialLandmarks.NOSE_BRIDGE,
+        FacialLandmarks.LEFT_EYE_INNER,
+        FacialLandmarks.RIGHT_EYE_INNER
+    ],
+    scale_multiplier=80.0,  # For raw model (already ~normalized size 0.12)
+    offset_x=0.0,
+    offset_y=-1.8,  # Move up to eyes
+    offset_z=-2.5,  # Forward from face
+    rotation_x=0.0,
+    rotation_y=180.0,  # Face forward
+    rotation_z=0.0
+)
+
+OBJECTS_3D["glasses3d_02"] = Object3DConfig(
+    name="MOSCOT Detailed Glasses",
+    obj_path=OBJECTS_3D_DIR / "glasses02" / "glasses02.obj",
+    anchor_landmarks=[
+        FacialLandmarks.NOSE_BRIDGE,
+        FacialLandmarks.LEFT_EYE_INNER,
+        FacialLandmarks.RIGHT_EYE_INNER
+    ],
+    scale_multiplier=0.35,  # For huge raw model (size 75 - needs heavy downscale)
+    offset_x=0.0,
+    offset_y=-0.8,  # Move up to eyes
+    offset_z=-3.5,  # Forward from face
+    rotation_x=0.0,
+    rotation_y=180.0,
+    rotation_z=0.0
+)
+
+# Hat 3D objects
+OBJECTS_3D["hat3d_01"] = Object3DConfig(
+    name="Homburg Hat",
+    obj_path=OBJECTS_3D_DIR / "hat01" / "hat01.obj",
+    anchor_landmarks=[
+        FacialLandmarks.FOREHEAD_CENTER,
+        FacialLandmarks.FOREHEAD_LEFT,
+        FacialLandmarks.FOREHEAD_RIGHT
+    ],
+    scale_multiplier=1.8,  # For medium raw model (size 29)
+    offset_x=0.0,
+    offset_y=5.5,  # Higher - on top of head
+    offset_z=-3.0,  # More forward
+    rotation_x=-15.0,  # More tilt
+    rotation_y=0.0,  # Changed from 180 - face forward
+    rotation_z=0.0
+)
+
+OBJECTS_3D["hat3d_02"] = Object3DConfig(
+    name="Thrasher Cap",
+    obj_path=OBJECTS_3D_DIR / "hat02" / "hat02.obj",
+    anchor_landmarks=[
+        FacialLandmarks.FOREHEAD_CENTER,
+        FacialLandmarks.FOREHEAD_LEFT,
+        FacialLandmarks.FOREHEAD_RIGHT
+    ],
+    scale_multiplier=2.2,  # For medium raw model (size 28)
+    offset_x=0.0,
+    offset_y=5.0,  # Higher - on top of head
+    offset_z=-2.5,  # More forward
+    rotation_x=-10.0,  # More tilt
+    rotation_y=0.0,  # Changed from 180 - face forward (bill to front)
+    rotation_z=0.0
+)
+
+OBJECTS_3D["hat3d_03"] = Object3DConfig(
+    name="Baseball Cap",
+    obj_path=OBJECTS_3D_DIR / "hat03" / "hat03.obj",
+    anchor_landmarks=[
+        FacialLandmarks.FOREHEAD_CENTER,
+        FacialLandmarks.FOREHEAD_LEFT,
+        FacialLandmarks.FOREHEAD_RIGHT
+    ],
+    scale_multiplier=25.0,  # For small raw model (size 0.15 - already normalized)
+    offset_x=0.0,
+    offset_y=4.5,  # Higher - on top of head
+    offset_z=-1.5,  # More forward
+    rotation_x=-5.0,  # Add tilt
+    rotation_y=0.0,  # Face same direction as user
+    rotation_z=0.0
+)
+
+# Default active 3D objects (None active by default)
+DEFAULT_ACTIVE_3D_OBJECTS = {
+    "glasses3d_01": False,
+    "glasses3d_02": False,
+    "hat3d_01": False,
+    "hat3d_02": False,
+    "hat3d_03": False
+}

@@ -10,3 +10,6 @@ newmtl wire_086086086
 	Ka 0.337255 0.337255 0.337255
 	Kd 0.337255 0.337255 0.337255
 	Ks 0.350000 0.350000 0.350000
+	map_Kd textures/thrasher_cap_cap_diff1.jpg
+	map_Bump textures/thrasher_cap_cap_normal.jpg
+	map_Ns textures/thrasher_cap_cap_rough1.jpg

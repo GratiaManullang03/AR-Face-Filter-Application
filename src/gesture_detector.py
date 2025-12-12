@@ -6,7 +6,7 @@ Uses ratio-based calculations for distance-invariant detection.
 
 import math
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple, Callable
 from enum import Enum, auto
 

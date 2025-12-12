@@ -49,5 +49,8 @@ models/*.task
 # Claude AI cache
 .claude/
 
+# Cache directories
+.cache/
+
 # Docker
 docker-compose.override.yml

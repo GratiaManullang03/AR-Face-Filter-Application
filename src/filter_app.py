@@ -5,7 +5,6 @@ Orchestrates camera, face detection, gesture detection, and filter rendering.
 
 import cv2
 import numpy as np
-import time
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -18,6 +17,8 @@ from .gesture_detector import GestureDetector, GestureType, GestureEvent
 from . import config
 from .models import ARFilter, TextureMask
 from .ui import UIManager
+from .object_3d import Object3D
+from .renderer_3d import Renderer3D
 
 
 class FilterApplication:
@@ -36,8 +37,11 @@ class FilterApplication:
 
         self.filters: Dict[str, ARFilter] = {}
         self.texture_masks: Dict[str, TextureMask] = {}
+        self.objects_3d: Dict[str, Object3D] = {}
         self.active_filters: Dict[str, bool] = {}
         self.active_texture_mask: Optional[str] = None
+        self.active_3d_objects: Dict[str, bool] = {}
+        self.renderer_3d: Optional[Renderer3D] = None
         self.running = False
 
         # Hand gesture visualization
@@ -50,10 +54,15 @@ class FilterApplication:
         # Load all filters
         self._load_filters()
         self._load_texture_masks()
+        self._load_3d_objects()
 
         # Initialize active filters state
         self.active_filters = config.DEFAULT_ACTIVE_FILTERS.copy()
         self.active_texture_mask = config.DEFAULT_ACTIVE_TEXTURE_MASK
+        self.active_3d_objects = config.DEFAULT_ACTIVE_3D_OBJECTS.copy()
+
+        # Initialize 3D renderer with camera dimensions
+        self.renderer_3d = Renderer3D(config.FRAME_WIDTH, config.FRAME_HEIGHT)
 
         # Setup gesture callbacks
         self._setup_gesture_callbacks()
@@ -81,6 +90,17 @@ class FilterApplication:
                 self._mask_names.append(name)
             else:
                 print(f"Skipped texture mask: {name}")
+
+    def _load_3d_objects(self) -> None:
+        """Load all 3D objects from configuration."""
+        for name, cfg in config.OBJECTS_3D.items():
+            # Disable smart loader temporarily - use raw models
+            obj3d = Object3D(cfg, use_smart_loader=False)
+            if obj3d.is_loaded:
+                self.objects_3d[name] = obj3d
+                print(f"Loaded 3D object: {name} ({obj3d.config.name})")
+            else:
+                print(f"Skipped 3D object: {name}")
 
     def _setup_gesture_callbacks(self) -> None:
         """Register callbacks for gesture events."""
@@ -224,6 +244,33 @@ class FilterApplication:
 
         return frame
 
+    def _apply_3d_object(
+        self,
+        frame: np.ndarray,
+        face: FaceLandmarks,
+        obj3d: Object3D
+    ) -> np.ndarray:
+        """Apply a 3D object to the frame using pose estimation and projection."""
+        if not obj3d.is_loaded or not self.renderer_3d:
+            return frame
+
+        try:
+            # Get landmarks - already list of tuples
+            landmarks = face.landmarks
+            landmarks_3d = face.landmarks_3d if face.landmarks_3d else None
+
+            # Render the 3D object
+            frame = self.renderer_3d.render_object(
+                frame,
+                obj3d,
+                landmarks,
+                landmarks_3d
+            )
+        except Exception as e:
+            print(f"Error rendering 3D object {obj3d.config.name}: {e}")
+
+        return frame
+
     def _draw_wireframe(
         self,
         frame: np.ndarray,
@@ -299,6 +346,33 @@ class FilterApplication:
             status = "ON" if self.show_hand_landmarks else "OFF"
             print(f"Hand landmarks visualization: {status}")
 
+        # 3D Object controls
+        elif key == ord('5'):
+            name = "glasses3d_01"
+            self.active_3d_objects[name] = not self.active_3d_objects.get(name, False)
+            print(f"3D Glasses 01: {'ON' if self.active_3d_objects[name] else 'OFF'}")
+        elif key == ord('6'):
+            name = "glasses3d_02"
+            self.active_3d_objects[name] = not self.active_3d_objects.get(name, False)
+            print(f"3D Glasses 02: {'ON' if self.active_3d_objects[name] else 'OFF'}")
+        elif key == ord('7'):
+            name = "hat3d_01"
+            self.active_3d_objects[name] = not self.active_3d_objects.get(name, False)
+            print(f"3D Hat 01: {'ON' if self.active_3d_objects[name] else 'OFF'}")
+        elif key == ord('8'):
+            name = "hat3d_02"
+            self.active_3d_objects[name] = not self.active_3d_objects.get(name, False)
+            print(f"3D Hat 02: {'ON' if self.active_3d_objects[name] else 'OFF'}")
+        elif key == ord('9'):
+            name = "hat3d_03"
+            self.active_3d_objects[name] = not self.active_3d_objects.get(name, False)
+            print(f"3D Hat 03: {'ON' if self.active_3d_objects[name] else 'OFF'}")
+        elif key in (ord('0'),):
+            # Disable all 3D objects
+            for name in self.active_3d_objects:
+                self.active_3d_objects[name] = False
+            print("All 3D objects disabled")
+
         return True
 
     def run(self) -> None:
@@ -344,6 +418,11 @@ class FilterApplication:
                     for name, flt in self.filters.items():
                         if self.active_filters.get(name, False):
                             display_frame = self._apply_filter(display_frame, face, flt)
+
+                    # Render 3D objects
+                    for name, obj3d in self.objects_3d.items():
+                        if self.active_3d_objects.get(name, False):
+                            display_frame = self._apply_3d_object(display_frame, face, obj3d)
 
                     if config.SHOW_LANDMARKS:
                         display_frame = self.ui.draw_landmarks(display_frame, face)

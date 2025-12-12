@@ -61,8 +61,8 @@ class HandGestureDetector:
             base_options=base_options,
             running_mode=vision.RunningMode.VIDEO,
             num_hands=2,  # Detect up to 2 hands
-            min_hand_detection_confidence=0.5,
-            min_tracking_confidence=0.5
+            min_hand_detection_confidence=0.7,  # Increased from 0.5 to reduce false positives
+            min_tracking_confidence=0.7  # Increased from 0.5
         )
 
         self.landmarker = vision.HandLandmarker.create_from_options(options)
@@ -73,7 +73,7 @@ class HandGestureDetector:
 
         # Gesture detection state
         self.last_ok_gesture_time = 0
-        self.ok_gesture_cooldown = 2.0  # seconds
+        self.ok_gesture_cooldown = 3.0  # seconds - increased to reduce false triggers
 
         # Callback for OK gesture
         self.ok_gesture_callback: Optional[Callable[[], None]] = None
@@ -204,7 +204,8 @@ class HandGestureDetector:
         # Thumb and index should be close relative to hand size
         if reference_dist > 0:
             circle_ratio = thumb_index_dist / reference_dist
-            if circle_ratio > 0.3:  # Too far apart
+            # Made more strict: reduced from 0.3 to 0.25
+            if circle_ratio > 0.25:  # Too far apart - stricter threshold
                 return False
         else:
             return False
@@ -218,14 +219,15 @@ class HandGestureDetector:
         def distance_from_wrist(point):
             return math.hypot(point[0] - wrist[0], point[1] - wrist[1])
 
-        middle_extended = distance_from_wrist(middle_tip) > distance_from_wrist(middle_mcp) * 1.2
-        ring_extended = distance_from_wrist(ring_tip) > distance_from_wrist(ring_mcp) * 1.2
-        pinky_extended = distance_from_wrist(pinky_tip) > distance_from_wrist(pinky_mcp) * 1.2
+        # Increased multiplier from 1.2 to 1.3 for stricter extension check
+        middle_extended = distance_from_wrist(middle_tip) > distance_from_wrist(middle_mcp) * 1.3
+        ring_extended = distance_from_wrist(ring_tip) > distance_from_wrist(ring_mcp) * 1.3
+        pinky_extended = distance_from_wrist(pinky_tip) > distance_from_wrist(pinky_mcp) * 1.3
 
-        # At least 2 out of 3 fingers should be extended
+        # All 3 fingers must be extended for more strict detection
         extended_count = sum([middle_extended, ring_extended, pinky_extended])
 
-        return extended_count >= 2
+        return extended_count >= 3  # Changed from >= 2 to >= 3 (all fingers must extend)
 
     def register_ok_gesture_callback(self, callback: Callable[[], None]) -> None:
         """Register callback for OK gesture detection."""
