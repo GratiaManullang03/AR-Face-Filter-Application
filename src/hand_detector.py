@@ -120,7 +120,10 @@ class HandGestureDetector:
                 ]
 
                 # Get handedness (left or right)
-                handedness = results.handedness[i][0].category_name if i < len(results.handedness) else "Unknown"
+                # NOTE: MediaPipe returns handedness from camera perspective (mirrored)
+                # We flip it to match user's actual hand (right hand appears on right side)
+                raw_handedness = results.handedness[i][0].category_name if i < len(results.handedness) else "Unknown"
+                handedness = "Right" if raw_handedness == "Left" else "Left" if raw_handedness == "Right" else "Unknown"
                 confidence = results.handedness[i][0].score if i < len(results.handedness) else 0.0
 
                 hands.append(HandLandmarks(
