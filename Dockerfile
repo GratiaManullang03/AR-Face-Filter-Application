@@ -8,7 +8,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Install system dependencies for OpenCV, MediaPipe, and GUI display
+# Install system dependencies for OpenCV, MediaPipe, GUI display, and wget
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     libgl1-mesa-glx \
@@ -23,6 +23,7 @@ RUN apt-get update && \
     libswscale-dev \
     libv4l-dev \
     x11-apps \
+    wget \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies first for better layer caching
@@ -33,8 +34,14 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 COPY src ./src
 COPY main.py .
 COPY assets ./assets
+COPY download_models.sh .
 
-# Create directory for MediaPipe cache
-RUN mkdir -p /.mediapipe && chmod 777 /.mediapipe
+# Create directories for models, captures, and MediaPipe cache
+RUN mkdir -p models captures /.mediapipe && \
+    chmod 777 /.mediapipe && \
+    chmod +x download_models.sh
+
+# Download MediaPipe models (Face Landmarker + Hand Landmarker)
+RUN ./download_models.sh
 
 CMD ["python", "main.py"]

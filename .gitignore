@@ -29,11 +29,11 @@ logs/
 .DS_Store
 Thumbs.db
 
-# Project specific
-assets/*.png
-assets/*.jpg
-assets/*.jpeg
-!assets/.gitkeep
+# Project specific - Captures
+captures/*.png
+captures/*.jpg
+captures/*.jpeg
+!captures/.gitkeep
 
 # Camera recordings (if added in future)
 recordings/
@@ -46,6 +46,8 @@ recordings/
 # MediaPipe models (download separately)
 models/*.task
 
+# Claude AI cache
 .claude/
 
-captures/
+# Docker
+docker-compose.override.yml

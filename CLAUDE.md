@@ -4,12 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A real-time AR face filter application using Python, OpenCV, and **MediaPipe Face Landmarker API (Latest)**. The application detects facial landmarks via webcam and applies two types of effects:
+A real-time AR face filter application using Python, OpenCV, and **MediaPipe Face Landmarker API (Latest)** with **Hand Gesture Detection**. The application detects facial landmarks via webcam and applies two types of effects:
 1. **2D Filters**: PNG overlays (glasses, mustache, beard, headband) that scale and rotate with head movement
 2. **3D Texture Masks**: Face mesh textures mapped using triangle-based affine warping with proper UV mapping, backface culling, and z-sorting
+3. **Hand Gesture Controls**: OK gesture (👌) for screenshot capture with visual feedback
 
-**Important**: This application uses the **latest MediaPipe Face Landmarker API** (not the legacy `solutions.face_mesh`), which provides:
-- VIDEO mode with timestamp tracking for optimal real-time performance
+**Important**: This application uses the **latest MediaPipe APIs** (not the legacy solutions):
+- **Face Landmarker API** with VIDEO mode and timestamp tracking for optimal real-time performance
+- **Hand Landmarker API** for gesture recognition with up to 2 hands detection
 - Built-in smoothing when `num_faces=1`
 - Better accuracy and performance
 - Proper resource management via context managers
@@ -25,10 +27,12 @@ venv\Scripts\activate  # Windows
 # Install dependencies
 pip install -r requirements.txt
 
-# Download MediaPipe Face Landmarker model (REQUIRED - first time only)
+# Download MediaPipe models (REQUIRED - first time only)
+# Downloads both Face Landmarker (~3.6MB) and Hand Landmarker (~7.6MB)
 ./download_models.sh
 # Or manually:
 # wget -O models/face_landmarker.task https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task
+# wget -O models/hand_landmarker.task https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task
 
 # Run the application
 python main.py
@@ -38,6 +42,7 @@ python main.py
 - Webcam
 - PNG assets in `assets/` directory
 - Face Landmarker model file (~3.6MB) in `models/` directory
+- Hand Landmarker model file (~7.6MB) in `models/` directory
 
 ## Architecture
 
@@ -47,12 +52,15 @@ The codebase follows Clean Architecture with files intentionally kept under 200 
 
 1. **Camera Capture** ([camera.py](src/camera.py)) → Raw video frames
 2. **Face Detection** ([face_detector.py](src/face_detector.py)) → 478 facial landmarks (2D pixel + 3D normalized)
-3. **Landmark Stabilization** ([utils.py](src/utils.py)) → EMA smoothing to reduce jitter
-4. **Gesture Detection** ([gesture_detector.py](src/gesture_detector.py)) → Analyzes landmark ratios to detect mouth open/brow raise
-5. **Rendering** → Two parallel systems:
+3. **Hand Detection** ([hand_detector.py](src/hand_detector.py)) → 21 hand landmarks per hand (up to 2 hands)
+4. **Landmark Stabilization** ([utils.py](src/utils.py)) → EMA smoothing to reduce jitter
+5. **Gesture Detection** → Two parallel systems:
+   - **Face Gestures** ([gesture_detector.py](src/gesture_detector.py)) → Analyzes landmark ratios to detect mouth open/brow raise
+   - **Hand Gestures** ([hand_detector.py](src/hand_detector.py)) → Detects OK gesture (👌) for screenshot capture
+6. **Rendering** → Two parallel systems:
    - **2D Filters** ([graphics.py](src/graphics.py) + [filter_app.py](src/filter_app.py)) → Affine transformations for PNG overlays
    - **3D Texture Masks** ([mesh_renderer.py](src/mesh_renderer.py)) → Triangle-by-triangle UV warping
-6. **UI Overlay** ([ui.py](src/ui.py)) → FPS, instructions, gesture status
+7. **UI Overlay** ([ui.py](src/ui.py)) → FPS, instructions, gesture status, hand landmarks
 
 ### Key Technical Components
 
@@ -72,7 +80,9 @@ The codebase follows Clean Architecture with files intentionally kept under 200 
 - **Resource Management**: Proper `__enter__`/`__exit__` context manager support
 
 #### Gesture Detection System
-- [gesture_detector.py](src/gesture_detector.py) implements **ratio-based detection** for camera-distance invariance:
+
+**Face Gestures** ([gesture_detector.py](src/gesture_detector.py)):
+- Implements **ratio-based detection** for camera-distance invariance:
   - **Mouth Aspect Ratio (MAR)** = `vertical_distance / horizontal_distance`
   - **Brow Raise Ratio** = `avg_brow_to_eye_distance / face_height`
 - **Debouncing logic**:
@@ -81,6 +91,18 @@ The codebase follows Clean Architecture with files intentionally kept under 200 
 - Callbacks registered in [filter_app.py](src/filter_app.py):
   - Mouth open → Cycles texture masks
   - Brow raise → Toggles glasses filter
+
+**Hand Gestures** ([hand_detector.py](src/hand_detector.py)):
+- Uses **MediaPipe Hand Landmarker API** with VIDEO mode
+- Detects up to 2 hands simultaneously
+- **OK Gesture (👌) Detection**:
+  - Checks if thumb tip (landmark 4) and index tip (landmark 8) are close together (forming circle)
+  - Distance ratio: `thumb_index_dist / reference_dist < 0.3`
+  - Reference distance: wrist (landmark 0) to index MCP (landmark 5)
+  - Verifies at least 2 of the remaining fingers (middle, ring, pinky) are extended
+- **Cooldown**: 2-second cooldown prevents double-triggers
+- **Callback System**: Registered in [filter_app.py](src/filter_app.py) for screenshot capture
+- **Visual Feedback**: Shows "👌 OK GESTURE → Photo Captured!" message on detection
 
 #### 3D Mesh Rendering Pipeline
 [mesh_renderer.py](src/mesh_renderer.py) implements sophisticated triangle-based warping:
@@ -155,9 +177,11 @@ Each `TextureMask` has its own `MeshRenderer` with calibrated winding order.
 - Set `MAX_NUM_FACES = 1` in config for better performance
 
 ### Screenshot System
-- Press 'S' to save current frame
+- **Keyboard**: Press 'S' to save current frame
+- **Hand Gesture**: Make OK gesture (👌) with thumb and index finger forming a circle
 - Saves to `captures/` directory with timestamp: `capture_YYYYMMDD_HHMMSS.png`
 - Screenshots include all active filters and UI overlays
+- Visual feedback shows "👌 OK GESTURE → Photo Captured!" when triggered by gesture
 
 ## Keyboard Controls Reference
 
@@ -174,9 +198,15 @@ Each `TextureMask` has its own `MeshRenderer` with calibrated winding order.
 - `N`: Disable all texture masks
 
 **Other:**
-- `S`: Save screenshot
-- `G`: Toggle gesture detection on/off
+- `S`: Save screenshot (or use OK hand gesture 👌)
+- `G`: Toggle face gesture detection on/off
+- `H`: Toggle hand landmarks visualization on/off
 - `Q`: Quit application
+
+**Hand Gestures:**
+- **OK Gesture (👌)**: Thumb + index finger forming circle → Capture screenshot
+  - Make sure other fingers are extended
+  - 2-second cooldown between captures
 
 ## Adding New Features
 
@@ -266,6 +296,21 @@ Key landmarks used in this project (defined in `FacialLandmarks` class):
 - Verify z-sorting is enabled (requires `landmarks_3d` parameter)
 
 ### Gesture False Triggers
+
+**Face Gestures:**
 - Increase `required_frames` for stricter detection
 - Increase `threshold` value
 - Adjust landmark indices in `GestureLandmarks` for better accuracy
+
+**Hand Gestures:**
+- Increase `ok_gesture_cooldown` in [hand_detector.py](src/hand_detector.py) (default: 2.0 seconds)
+- Adjust `circle_ratio` threshold (default: 0.3) in `_is_ok_gesture` method
+- Ensure good lighting for better hand detection
+- Keep hand steady during gesture (doesn't require multiple frames like face gestures)
+
+### Hand Detection Not Working
+- Verify `models/hand_landmarker.task` exists (run `./download_models.sh`)
+- Check webcam has good lighting
+- Try toggling hand landmarks visualization with 'H' key to debug
+- Hand should be clearly visible in frame (not too close or too far)
+- Model file should be ~7.6MB

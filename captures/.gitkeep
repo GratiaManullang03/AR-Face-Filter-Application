@@ -1,0 +1,5 @@
+# This directory stores screenshots captured during the application
+# Screenshots are NOT committed to git (see .gitignore)
+# Press 'S' or use OK hand gesture (👌) to capture screenshots
+
+# Format: capture_YYYYMMDD_HHMMSS.png

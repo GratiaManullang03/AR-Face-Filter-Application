@@ -1,0 +1,7 @@
+# This directory contains MediaPipe models
+# Models are NOT committed to git (see .gitignore)
+# Download models using: ./download_models.sh
+
+# Required models:
+# - face_landmarker.task (~3.6MB)
+# - hand_landmarker.task (~7.6MB)
